@@ -11,7 +11,7 @@
 
 #define MAX_PATH_LENGTH 256
 
-int counter = 0;
+int currentProcessChildCounter = 0;
 pid_t childPids[256];
 pid_t root;
 
@@ -25,6 +25,9 @@ int main (int argc, char* argv[]) {
 		printf("%s",errorMessage);
 		exit(1);
 	}
+
+	root = getpid();
+	printf("Initial PID: %d\n", root);
 
 	char* column_to_sort = argv[2];
 
@@ -62,7 +65,7 @@ int travdir (const char * input_dir_path, char* column_to_sort, const char * out
 	char *directory_path = (char *) malloc(MAX_PATH_LENGTH);
 	strcpy(directory_path, input_dir_path);
 	
-	//counter counts how many child processes have been created
+	//currentProcessChildCounter counts how many child processes have been created
 	DIR * directory = opendir(directory_path);
 
 	if (directory == NULL) {
@@ -76,7 +79,7 @@ int travdir (const char * input_dir_path, char* column_to_sort, const char * out
 		currEntry = readdir(directory);
 
 		//making sure not to fork bomb
-		if(counter == 256){
+		if(currentProcessChildCounter == 256){
 			break;
 		}
 		
@@ -102,7 +105,7 @@ int travdir (const char * input_dir_path, char* column_to_sort, const char * out
 				pid_t pid,ppid;
 				//fork returns 0 if child process
 				pid = fork();
-				counter++;
+				currentProcessChildCounter++;
 
 				if (pid < 0) {
           			printf("ERROR: Failed to fork process 1\n");
@@ -111,16 +114,13 @@ int travdir (const char * input_dir_path, char* column_to_sort, const char * out
 				else if(pid == 0){ //if child then go to newpath
 					//Add on the d_name to the directory
 					pid_t child_id = getpid();
-					childPids[counter] = child_id;
+					childPids[currentProcessChildCounter] = child_id;
 					strcat(directory_path,"/");
 					strcat(directory_path,d_name);
 					directory = opendir(directory_path);
 				}
 				else if(pid>0){ //parent
-					if(counter == 1) {
-						root = getpid();
-						printf("Initial PID: %d\n", root);
-					}
+					
 				}
 			}
 		} 
@@ -133,9 +133,10 @@ int travdir (const char * input_dir_path, char* column_to_sort, const char * out
 
 			//Check to see if the file is a csv
 			char *lastdot = strrchr(d_name, '.');
-
-			if (strcmp(lastdot,".csv") != 0) {
-				printf("File is not a .csv: %s\n", d_name);
+			
+			//printf("The value of lastdot is: %s\n", lastdot);
+			if (lastdot == NULL || strcmp(lastdot,".csv") != 0) {
+				//printf("File is not a .csv: %s\n", d_name);
 			} 
 			else if (csvFile != NULL && !isAlreadySorted(pathname, column_to_sort)) {
 				//pathname has the full path to the file including extenstion
@@ -144,7 +145,7 @@ int travdir (const char * input_dir_path, char* column_to_sort, const char * out
 				pid_t ppid,pid;
 				//fork returns 0 if child process
 				pid = fork();
-				counter++;
+				currentProcessChildCounter++;
 
 				if (pid < 0) {
           			printf("Failed to fork process 1\n");
@@ -152,7 +153,7 @@ int travdir (const char * input_dir_path, char* column_to_sort, const char * out
      			}
 				//copies the code that you are running and returns zero to a new pid 
 				else if(pid == 0){ //if child then sort
-					childPids[counter] = getpid();
+					childPids[currentProcessChildCounter] = getpid();
 					//change path for accessing the csv file
 					char * csvFileOutputPath = malloc(sizeof(char)*512);
 					//Remove the ".csv" from d_name to insert "-sorted-VALIDCOLUMN.csv
@@ -187,10 +188,7 @@ int travdir (const char * input_dir_path, char* column_to_sort, const char * out
 					free(file_name);
 					exit(1);
 				} else if(pid > 0) { //parent
-					if(counter == 1) {
-						root = getpid();
-						printf("Initial PID: %d\n", root);
-					}
+					
 				}
 			//wait after parent is done looking for csvs and THEN wait for children to end
 			//once the child is done fork will return 0 
@@ -206,7 +204,7 @@ int travdir (const char * input_dir_path, char* column_to_sort, const char * out
 	//WAIT FOR CHILDREN TO FINISH 
 	int i = 0,j;
 	int child_status;
-	int totalprocesses = counter;
+	int totalprocesses = currentProcessChildCounter;
 
 	while(totalprocesses > 0){
 		//wait() is used to wait until any one child process terminates
@@ -219,6 +217,10 @@ int travdir (const char * input_dir_path, char* column_to_sort, const char * out
 		}
 		--totalprocesses;
 	}
+
+	i++; //We want to include the current process in the count of the toalt processes, thus we must increment i by 1
+
+	//printf("I am process '%d' and I have an exit status of: %d\n", getpid(), i);
 	
 	free(directory_path);	
 	if(closedir(directory)){
@@ -227,7 +229,7 @@ int travdir (const char * input_dir_path, char* column_to_sort, const char * out
 	}
 
 	if(getpid() == root) {
-		printf("\nTotal number of processes: %d\n\r", (i + counter));	
+		printf("\nTotal number of processes: %d\n\r", (i));	
 	}
 	exit(i);
 }
