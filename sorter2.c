@@ -10,10 +10,8 @@
 #include "sorter2.h"
 
 #define MAX_PATH_LENGTH 256
-#define MAX_NUM_CHILDREN 256
 
-pid_t root = 0;
-pid_t rootParent = 0;
+pid_t root;
 
 int main (int argc, char* argv[]) {
 	//processes,pids, and original parent
@@ -21,16 +19,17 @@ int main (int argc, char* argv[]) {
 	
 	//check inputs 
 	char *errorMessage = "The command line must follow either:\n./sorter -c  valid_column -d inputdir -o outputdir\n./sorter -c  valid_column -d inputdir\n./sorter -c  valid_column";
-	if(strcmp(argv[1],"-c") != 0){
+	if(strcmp(argv[1],"-c") !=0){
 		printf("%s",errorMessage);
 		exit(1);
 	}
 
-	//printf("My parent's ID is: %d\n", getppid());
-	root = getpid();
-	rootParent = getppid();
-
 	char* column_to_sort = argv[2];
+
+	root=getpid();
+    printf("INITIAL PID: %i\n", root);
+    printf("PIDS of all child processes:");
+    fflush(stdout);
 
 	if(argc == 3){ //Default behavior is search the current directory
 		travdir("./", column_to_sort, NULL);
@@ -62,15 +61,16 @@ int main (int argc, char* argv[]) {
 //traverse the directory for a csv 
 int travdir (const char * input_dir_path, char* column_to_sort, const char * output_dir)
 {
-	int k;
-	int currentProcessChildCounter = 0;
 	char *directory_path = (char *) malloc(MAX_PATH_LENGTH);
 	strcpy(directory_path, input_dir_path);
+	pid_t pid;
 	
-	//currentProcessChildCounter counts how many child processes have been created
+	//counter counts how many child processes have been created
+	int counter = 1;
 	DIR * directory = opendir(directory_path);
 
 	if (directory == NULL) {
+        printf ("Not a valid directory'%s'\n", directory_path);
         return 1;
 	}
 	
@@ -81,7 +81,7 @@ int travdir (const char * input_dir_path, char* column_to_sort, const char * out
 		currEntry = readdir(directory);
 
 		//making sure not to fork bomb
-		if(currentProcessChildCounter == 256){
+		if(counter == 256){
 			break;
 		}
 		
@@ -95,41 +95,40 @@ int travdir (const char * input_dir_path, char* column_to_sort, const char * out
 		//this is a directory 
 		if(currEntry->d_type==DT_DIR) {
 			if(strcmp(d_name,".") != 0 && strcmp(d_name, "..") != 0) {
+				counter++;
 				//need to EXTEND THE PATH for next travdir call, working dir doesn't change (think adir/ -> adir/bdir/....)
 				int pathlength = 0;	
 				char path[MAX_PATH_LENGTH];
 				pathlength = snprintf(path, MAX_PATH_LENGTH, "%s/%s",currEntry, d_name);
 				if(pathlength > MAX_PATH_LENGTH-1) {
-					printf("ERROR: Path length is too long");
+					printf("Path length is too long error");
 					return -4;
 				}
 				//open new directory again
 				pid_t pid,ppid;
 				//fork returns 0 if child process
 				pid = fork();
-				ppid = getppid();
-				//printf("CurrentProcessChildCounter is: %d\n",currentProcessChildCounter);
-				//printf("My PID is: %d\n",getpid());
-				//printf("Current child PID is: %d\n",pid);
-				//printf("Current PPID is: %d\n",ppid);
-				//printf("Root PID is: %d\n",root);
-				if(currentProcessChildCounter == 0 && pid == 0 && ppid == root ) {
-					printf("Initial PID: %d\n",root);
-				}
+				//ppid = getppid();
 
 				if (pid < 0) {
-          			printf("ERROR: Failed to fork process 1\n");
+          			printf("Failed to fork process 1\n");
          			break;
      			}
-				else if(pid == 0){ //if child then go to newpath
-					//Add on the d_name to the directory
-					pid_t child_id = getpid();
+				else if(pid==0){ //if child then go to newpath
+					//Add on the d_name to the directory_
+					//printf("This is the child process searching through next directory. My pid is %d and my parent's id is %d.\n", getpid(), getppid());
 					strcat(directory_path,"/");
 					strcat(directory_path,d_name);
 					directory = opendir(directory_path);
 				}
-				else if(pid > 0){ //parent
-					currentProcessChildCounter++;
+				else if(pid>0){ //parent
+					printf("%i,", pid);
+                	fflush(stdout);
+					//printf("This is the parent process. My pid is %d and my parent's id is %d.\n", getpid(), pid);
+                    //pid_t child_id;
+                    //child_id = getpid();
+                    //store child process
+                    //printf("Parent forked new child with id: %d\n", child_id);
 				}
 			}
 		} 
@@ -150,19 +149,13 @@ int travdir (const char * input_dir_path, char* column_to_sort, const char * out
 			else if (csvFile != NULL && !isAlreadySorted(pathname, column_to_sort)) {
 				//pathname has the full path to the file including extenstion
 				//directory_path has only the parent directories of the file
-				
+				//IF THE FILE CONTAINS 
+				counter++;
+				//specify to what directory openddir and then do d_name
+
 				pid_t ppid,pid;
 				//fork returns 0 if child process
 				pid = fork();
-				ppid = getppid();
-				//printf("CurrentProcessChildCounter is: %d\n",currentProcessChildCounter);
-				//printf("My PID is: %d\n",getpid());
-				//printf("Current PID is: %d\n",pid);
-				//printf("Current PPID is: %d\n",ppid);
-				//printf("Root PID is: %d\n",root);
-				if(currentProcessChildCounter == 0 && pid == 0 && ppid == root) {
-					printf("Initial PID: %d\n",root);
-				}
 
 				if (pid < 0) {
           			printf("Failed to fork process 1\n");
@@ -170,13 +163,14 @@ int travdir (const char * input_dir_path, char* column_to_sort, const char * out
      			}
 				//copies the code that you are running and returns zero to a new pid 
 				else if(pid == 0){ //if child then sort
+					//printf("This is the child process. My pid is %d and my parent's id is %d.\n", getpid(), getppid());
 					//change path for accessing the csv file
 					char * csvFileOutputPath = malloc(sizeof(char)*512);
 					//Remove the ".csv" from d_name to insert "-sorted-VALIDCOLUMN.csv
 					char *file_name = (char *) malloc(strlen(d_name) + 1);
 					strcpy(file_name, d_name);					
 					char *lastdot = strrchr(file_name, '.');
-					if (lastdot != NULL) {
+					if (lastdot != NULL){
 						*lastdot = '\0';
 					}
 					
@@ -196,67 +190,69 @@ int travdir (const char * input_dir_path, char* column_to_sort, const char * out
 					strcat(csvFileOutputPath,"-sorted-");
 					strcat(csvFileOutputPath,column_to_sort);
 					strcat(csvFileOutputPath,".csv");
+					
+					//printf("pathname: %s\n", csvFileOutputPath);
+					//printf("d_name: %s\n",d_name);
 
 					FILE *csvFileOut = fopen(csvFileOutputPath,"w");
 
 					sortnew(csvFile, csvFileOut, column_to_sort);
 					free(csvFileOutputPath);
 					free(file_name);
-					exit(1);
+				
 				} else if(pid > 0) { //parent
-					currentProcessChildCounter++;
+					printf("%i,", pid);
+            		fflush(stdout);
+					//printf("This is the parent process. My pid is %d and my parent's id is %d.\n", getpid(), pid);
+					//pid_t child_id;
+					//child_id = pid; 
 				}
 			//wait after parent is done looking for csvs and THEN wait for children to end
 			//once the child is done fork will return 0 
 			} else {
-
+				//printf("File has already been sorted or is NULL: %s\n", d_name);
 			}
 		} else {
 			fprintf(stderr, "ERROR: Input is not a file or a directory\n");
-			exit(-1);
+			exit(1);
 		}	
 	}
 
 	//WAIT FOR CHILDREN TO FINISH 
-	int i = 0, j = 0, l = 0;
+	//go through children array -> CHILDREN THAT HAVENT FINISHED YET
+	int j=0,i=0;
 	int child_status;
-	int totalprocesses = currentProcessChildCounter;
-	pid_t childPids[MAX_NUM_CHILDREN];
+	int totalprocesses = counter;
+	//printf("totalprocesses before waiting: %d\n",counter);
+	//printf("total number of processes created %d\n\r", totalprocesses);		
 
-	while(totalprocesses > 0){
+	/*while(counter > 0){
 		//wait() is used to wait until any one child process terminates
 		//wait returns process ID of the child process for which status is reported
+		child_ids_waiting_on = wait(&child_status);
+		--counter;
+	}
+	*/
+	while(totalprocesses > 0){
 		while( (j = wait(&child_status)) != -1) {
 			//printf("%d,", j);
-			childPids[l] = j;
 			if(WIFEXITED(child_status)) {
 				i = i + WEXITSTATUS(child_status);
 			}
-			l++;
 		}
 		--totalprocesses;
 	}
 
-
-	i++; //We want to include the current process in the count of the toalt processes, thus we must increment i by 1
-
-	//printf("I am process '%d' and I have an exit status of: %d\n", getpid(), i);
-	
 	free(directory_path);	
 	if(closedir(directory)){
-		printf("ERROR: Could not close dir");
+		printf("error could not close dir");
 		return -3;
 	}
 
-	//All parents print out their children IDs
-	for(j = 0; j < l; j++) {
-		printf("%d,", childPids[j]);
-	}
-
 	if(getpid() == root) {
-		printf("\nTotal number of processes: %d\n\r", (i));	
+		printf("\nTotal number of processes: %d\n\r", (i + counter));	
 	}
-	exit(i);
+	
 }
 
 //Will check the file name of th input file pointer.

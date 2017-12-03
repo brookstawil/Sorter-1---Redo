@@ -7,6 +7,8 @@ typedef struct Row {
     struct rowEntry colEntries[28];
 } Row;
 
+void getColumnIndeces(char* columnNames, int * columnIndeces);   
+void setColumnTypes(int *columnIndeces, char **columnToSortTypes);
 size_t parseline(char** lineptr, size_t *n, FILE *stream);
 char* strtok_single(char* str, char const* delims);
 char* findType(char* token);
